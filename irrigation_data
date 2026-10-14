@@ -1,0 +1,68 @@
+
+CREATE TABLE irrigation_data (
+    record_id          INTEGER       PRIMARY KEY,
+    field_id           TEXT          NOT NULL,
+    sensor_id          TEXT          NOT NULL,
+    reading_time       TEXT          NOT NULL,
+    soil_moisture      REAL          NOT NULL,
+    temperature        REAL          NOT NULL,
+    water_usage_mm     REAL          NOT NULL,
+    irrigation_status  TEXT          NOT NULL,
+    CONSTRAINT chk_moist   CHECK (soil_moisture BETWEEN 0 AND 100),
+    CONSTRAINT chk_water   CHECK (water_usage_mm >= 0),
+    CONSTRAINT chk_status  CHECK (irrigation_status IN ('ON','OFF','SCHEDULED'))
+);
+
+INSERT INTO irrigation_data VALUES (1, 'F1', 'S101', '2026-10-01 06:00:00', 36.48, 21.9, 1.98, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (2, 'F1', 'S101', '2026-10-01 07:00:00', 50.56, 36.5, 33.56, 'OFF');
+INSERT INTO irrigation_data VALUES (3, 'F1', 'S101', '2026-10-01 08:00:00', 40.07, 41.83, 34.62, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (4, 'F1', 'S101', '2026-10-01 09:00:00', 12.75, 37.22, 84.03, 'ON');
+INSERT INTO irrigation_data VALUES (5, 'F1', 'S101', '2026-10-01 10:00:00', 18.58, 22.38, 60.86, 'ON');
+INSERT INTO irrigation_data VALUES (6, 'F2', 'S102', '2026-10-01 11:00:00', 20.5, 33.34, 7.33, 'ON');
+INSERT INTO irrigation_data VALUES (7, 'F2', 'S102', '2026-10-01 12:00:00', 22.7, 28.02, 51.47, 'ON');
+INSERT INTO irrigation_data VALUES (8, 'F2', 'S102', '2026-10-01 13:00:00', 40.23, 35.6, 118.96, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (9, 'F2', 'S102', '2026-10-01 14:00:00', 36.73, 16.59, 107.25, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (10, 'F2', 'S102', '2026-10-01 15:00:00', 19.58, 31.14, 97.92, 'ON');
+INSERT INTO irrigation_data VALUES (11, 'F3', 'S103', '2026-10-01 16:00:00', 11.85, 35.21, 74.35, 'ON');
+INSERT INTO irrigation_data VALUES (12, 'F3', 'S103', '2026-10-01 17:00:00', 17.77, 34.84, 15.22, 'ON');
+INSERT INTO irrigation_data VALUES (13, 'F3', 'S103', '2026-10-01 18:00:00', 64.11, 40.91, 107.89, 'OFF');
+INSERT INTO irrigation_data VALUES (14, 'F3', 'S103', '2026-10-01 19:00:00', 34.71, 13.75, 43.18, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (15, 'F3', 'S103', '2026-10-01 20:00:00', 57.44, 22.37, 20.43, 'OFF');
+INSERT INTO irrigation_data VALUES (16, 'F4', 'S104', '2026-10-01 21:00:00', 56.38, 26.3, 16.53, 'OFF');
+INSERT INTO irrigation_data VALUES (17, 'F4', 'S104', '2026-10-01 22:00:00', 37.16, 21.29, 101.67, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (18, 'F4', 'S104', '2026-10-01 23:00:00', 48.28, 21.29, 76.17, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (19, 'F4', 'S104', '2026-10-02 00:00:00', 18.99, 17.28, 12.91, 'ON');
+INSERT INTO irrigation_data VALUES (20, 'F4', 'S104', '2026-10-02 01:00:00', 47.24, 36.39, 101.81, 'SCHEDULED');
+INSERT INTO irrigation_data VALUES (21, 'F5', 'S105', '2026-10-02 02:00:00', 23.53, 39.24, 30.65, 'ON');
+INSERT INTO irrigation_data VALUES (22, 'F5', 'S105', '2026-10-02 03:00:00', 55.43, 14.47, 71.79, 'OFF');
+INSERT INTO irrigation_data VALUES (23, 'F5', 'S105', '2026-10-02 04:00:00', 27.35, 29.5, 45.3, 'ON');
+INSERT INTO irrigation_data VALUES (24, 'F5', 'S105', '2026-10-02 05:00:00', 52.1, 24.7, 18.6, 'OFF');
+INSERT INTO irrigation_data VALUES (25, 'F5', 'S105', '2026-10-02 06:00:00', 24.8, 31.2, 62.4, 'ON');
+
+SELECT COUNT(*) AS total_records FROM irrigation_data;
+
+SELECT field_id, sensor_id, reading_time, soil_moisture,
+       temperature, irrigation_status
+FROM   irrigation_data
+ORDER  BY record_id;
+
+SELECT field_id, sensor_id, reading_time, soil_moisture
+FROM   irrigation_data
+WHERE  soil_moisture < 30
+ORDER  BY field_id, reading_time;
+
+SELECT field_id, ROUND(AVG(soil_moisture), 2) AS avg_soil_moisture
+FROM   irrigation_data
+GROUP  BY field_id
+ORDER  BY field_id;
+
+SELECT field_id, ROUND(SUM(water_usage_mm), 2) AS total_water_usage
+FROM   irrigation_data
+GROUP  BY field_id
+ORDER  BY field_id;
+
+SELECT irrigation_status, COUNT(*) AS total_records
+FROM   irrigation_data
+GROUP  BY irrigation_status
+ORDER  BY irrigation_status;
+
