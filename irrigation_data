@@ -65,4 +65,218 @@ SELECT irrigation_status, COUNT(*) AS total_records
 FROM   irrigation_data
 GROUP  BY irrigation_status
 ORDER  BY irrigation_status;
+-- =====================================================================
+-- PL/SQL
+-- =====================================================================
+
+-- PL/SQL Function 1: Recommend irrigation status from soil moisture
+--   below 30  -> ON,   30 to 49.99 -> SCHEDULED,   50 or above -> OFF
+CREATE OR REPLACE FUNCTION fn_recommend_status (p_moisture IN NUMBER)
+RETURN VARCHAR2
+IS
+BEGIN
+    IF p_moisture IS NULL THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Soil moisture cannot be NULL.');
+    END IF;
+
+    IF p_moisture < 0 OR p_moisture > 100 THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Soil moisture must be between 0 and 100.');
+    END IF;
+
+    IF p_moisture < 30 THEN
+        RETURN 'ON';
+    ELSIF p_moisture < 50 THEN
+        RETURN 'SCHEDULED';
+    ELSE
+        RETURN 'OFF';
+    END IF;
+END fn_recommend_status;
+/
+
+-- PL/SQL Procedure 2: Update irrigation status for a selected field
+CREATE OR REPLACE PROCEDURE sp_update_status (
+    p_field_id IN VARCHAR2,
+    p_status   IN VARCHAR2
+)
+IS
+    v_rows NUMBER;
+BEGIN
+    IF p_field_id IS NULL OR p_status IS NULL THEN
+        RAISE_APPLICATION_ERROR(-20003, 'Field ID and status are required.');
+    END IF;
+
+    IF p_status NOT IN ('ON', 'OFF', 'SCHEDULED') THEN
+        RAISE_APPLICATION_ERROR(-20004, 'Invalid status. Use ON, OFF or SCHEDULED.');
+    END IF;
+
+    UPDATE irrigation_data
+    SET    irrigation_status = p_status
+    WHERE  field_id = p_field_id;
+
+    v_rows := SQL%ROWCOUNT;
+
+    IF v_rows = 0 THEN
+        RAISE_APPLICATION_ERROR(-20005, 'No records found for field ' || p_field_id);
+    END IF;
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Field ' || p_field_id || ': status updated to ' || p_status ||
+                         ' (' || v_rows || ' records).');
+END sp_update_status;
+/
+
+-- PL/SQL Procedure 3: Field-wise soil moisture and water consumption report
+--   (pass a field ID, or leave empty to report on all fields)
+CREATE OR REPLACE PROCEDURE sp_field_report (
+    p_field_id IN VARCHAR2 DEFAULT NULL
+)
+IS
+    v_count NUMBER := 0;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('FIELD-WISE SOIL MOISTURE AND WATER REPORT');
+    DBMS_OUTPUT.PUT_LINE(RPAD('FIELD', 8) || RPAD('READINGS', 10) || RPAD('AVG MOISTURE', 15) ||
+                         RPAD('AVG TEMP', 11) || 'TOTAL WATER (mm)');
+
+    FOR r IN (SELECT field_id,
+                     COUNT(*)                       AS readings,
+                     ROUND(AVG(soil_moisture), 2)   AS avg_moist,
+                     ROUND(AVG(temperature), 2)     AS avg_temp,
+                     ROUND(SUM(water_usage_mm), 2)  AS total_water
+              FROM   irrigation_data
+              WHERE  p_field_id IS NULL
+                 OR  UPPER(field_id) = UPPER(TRIM(p_field_id))
+              GROUP  BY field_id
+              ORDER  BY field_id)
+    LOOP
+        v_count := v_count + 1;
+        DBMS_OUTPUT.PUT_LINE(RPAD(r.field_id, 8) || RPAD(r.readings, 10) ||
+                             RPAD(r.avg_moist, 15) || RPAD(r.avg_temp, 11) ||
+                             r.total_water);
+    END LOOP;
+
+    IF v_count = 0 THEN
+        RAISE_APPLICATION_ERROR(-20006, 'No records found for field: ' || p_field_id);
+    END IF;
+END sp_field_report;
+/
+
+-- =====================================================================
+-- EXECUTION EXAMPLES
+-- =====================================================================
+
+-- Execution 1: Function (expected: SCHEDULED, OFF, ON)
+SELECT record_id, soil_moisture,
+       fn_recommend_status(soil_moisture) AS recommended_status
+FROM   irrigation_data
+WHERE  record_id IN (1, 2, 4);
+
+-- Execution 2: Update procedure (before, run, after)
+SELECT irrigation_status, COUNT(*) AS total
+FROM   irrigation_data WHERE field_id = 'F1' GROUP BY irrigation_status;
+
+BEGIN
+    sp_update_status('F1', 'SCHEDULED');
+END;
+/
+
+SELECT irrigation_status, COUNT(*) AS total
+FROM   irrigation_data WHERE field_id = 'F1' GROUP BY irrigation_status;
+
+-- Execution 3: Field-wise report (all fields, then one field)
+BEGIN
+    sp_field_report;
+END;
+/
+
+BEGIN
+    sp_field_report('F2');
+END;
+/
+
+-- =====================================================================
+-- EXCEPTION HANDLING AND TEST CASES
+-- =====================================================================
+
+-- Test 1: Function with NULL moisture
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Result: ' || fn_recommend_status(NULL));
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 1 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 2: Function with moisture above 100 (invalid input)
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Result: ' || fn_recommend_status(150));
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 2 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 3: Function with negative moisture (invalid input)
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Result: ' || fn_recommend_status(-5));
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 3 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 4: Update a field that does not exist (missing record)
+BEGIN
+    sp_update_status('F9', 'ON');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 4 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 5: Update with an invalid status
+BEGIN
+    sp_update_status('F2', 'PAUSED');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 5 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 6: Update with NULL input
+BEGIN
+    sp_update_status(NULL, 'ON');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 6 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 7: Report for a field that does not exist
+BEGIN
+    sp_field_report('F9');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 7 Error caught: ' || SQLERRM);
+END;
+/
+
+-- Test 8: Duplicate record ID (primary key violation)
+BEGIN
+    INSERT INTO irrigation_data
+    VALUES (1, 'F1', 'S101', TO_TIMESTAMP('2026-10-05 06:00:00','YYYY-MM-DD HH24:MI:SS'), 40, 25, 10, 'SCHEDULED');
+EXCEPTION
+    WHEN DUP_VAL_ON_INDEX THEN
+        DBMS_OUTPUT.PUT_LINE('Test 8 Error caught: Duplicate record ID not allowed.');
+END;
+/
+
+-- Test 9: Soil moisture outside 0 to 100 (CHECK constraint violation)
+BEGIN
+    INSERT INTO irrigation_data
+    VALUES (99, 'F1', 'S101', TO_TIMESTAMP('2026-10-05 06:00:00','YYYY-MM-DD HH24:MI:SS'), 150, 25, 10, 'ON');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Test 9 Error caught: ' || SQLERRM);
+END;
+/
 
